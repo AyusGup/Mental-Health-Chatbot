@@ -4,6 +4,7 @@ from transformers import pipeline
 
 
 def chat_with_user(pipe, user_sessions, user_id, user_input):
+    print(user_id, user_input)
     """
     Generates a chatbot response for a given user while maintaining session history.
 
