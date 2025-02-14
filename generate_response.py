@@ -34,6 +34,8 @@ def chat_with_user(pipe, user_sessions, user_id, user_input):
     # Generate response
     outputs = pipe(prompt, max_new_tokens=256, do_sample=True, temperature=0.7, top_k=50, top_p=0.95)
 
+    print(outputs)
+
     # Extract response text
     response = outputs[0]["generated_text"].split(user_input)[-1].strip()
 
