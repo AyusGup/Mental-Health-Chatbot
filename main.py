@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from pydantic import BaseModel
-from generate_response import chat_with_user, remove_expired_sessions
+from model import Chatbot
 
 # Load environment variables
 load_dotenv()
@@ -28,15 +28,7 @@ app.add_middleware(
 )
 
 # Load the model
-pipe = pipeline(
-    "text-generation",
-    model="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-    torch_dtype=torch.bfloat16,
-    device_map="auto"
-)
-
-# Dictionary to store chat history for each user
-user_sessions = {}
+chatbot = Chatbot()
 
 class TextRequest(BaseModel):
     user_id: str
@@ -50,11 +42,9 @@ async def analyze_text(request: TextRequest):
     try:
         text = request.text
         user_id = request.user_id
+        print(text, user_id)
 
-        # Remove expired sessions before processing
-        remove_expired_sessions(user_sessions, session_expiry=SESSION_EXPIRY)
-
-        response = chat_with_user(pipe, user_sessions, user_id, text)
+        response = chatbot.generate_response(user_id, text)
 
         # Log response
         timestamp = datetime.now().isoformat()
