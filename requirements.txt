@@ -5,3 +5,4 @@ transformers
 python-dotenv
 pydantic
 bson
+accelerate
