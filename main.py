@@ -3,16 +3,18 @@ import uvicorn
 import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import pipeline
 from dotenv import load_dotenv
 from fastapi.responses import JSONResponse
 from datetime import datetime
 from pydantic import BaseModel
+from generate_response import chat_with_user, remove_expired_sessions
 
 # Load environment variables
 load_dotenv()
 
 PORT = int(os.getenv("PORT", "5000"))
+SESSION_EXPIRY = int(os.getenv("SESSION_EXPIRY", "3600"))
 
 app = FastAPI()
 
@@ -25,43 +27,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load fine-tuned model and tokenizer
-MODEL_NAME = "thrishala/mental_health_chatbot"
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
-model.eval()
+# Load the model
+pipe = pipeline(
+    "text-generation",
+    model="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+    torch_dtype=torch.bfloat16,
+    device_map="auto"
+)
 
-def extract_chatbot_response(text):
-    """Extract chatbot's response after [/INST]"""
-    parts = text.split("[/INST]")  
-    if len(parts) > 1:
-        response = parts[1].strip()
-        sentences = response.split(". ")  # Extract only the first complete sentence
-        return sentences[0] + "." if sentences else response
-    return "No response found."
-
-def generate_response(prompt, max_new_tokens=100): 
-    """Generates response using the chatbot model."""
-    try:
-        inputs = tokenizer(prompt, return_tensors="pt", truncation=True, padding=True).to(device)
-
-        with torch.no_grad():
-            output = model.generate(
-                **inputs,  
-                max_new_tokens=max_new_tokens,  # Limit response length
-                repetition_penalty=1.2,  
-                temperature=0.7,         
-                top_p=0.8,  
-                top_k=30
-            )
-
-        response = tokenizer.decode(output[0], skip_special_tokens=True).strip()
-        return extract_chatbot_response(response)  # Clean response
-
-    except Exception as e:
-        return f"Error generating response: {str(e)}"
+# Dictionary to store chat history for each user
+user_sessions = {}
 
 class TextRequest(BaseModel):
+    user_id: str
     text: str
 
 @app.post("/analyze-text/")
@@ -71,7 +49,12 @@ async def analyze_text(request: TextRequest):
     """
     try:
         text = request.text
-        response = generate_response(text)
+        user_id = request.user_id
+
+        # Remove expired sessions before processing
+        remove_expired_sessions(user_sessions, session_expiry=SESSION_EXPIRY)
+
+        response = chat_with_user(pipe, user_sessions, user_id, text)
 
         # Log response
         timestamp = datetime.now().isoformat()
